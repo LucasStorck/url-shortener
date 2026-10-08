@@ -12,7 +12,9 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 - Java 25, Spring Boot 4.1.1, Maven (wrapper: `./mvnw`)
 - PostgreSQL 15 + Liquibase (schema), Redis 7 (ainda sem uso)
 - `spring-boot-docker-compose`: ao subir a app, o `compose.yaml` sobe o Postgres e o Redis e a conexão é configurada automaticamente (por isso as portas são publicadas sem porta fixa no host)
-- Já no `pom.xml`: Actuator, Micrometer Prometheus, datasource-micrometer, validation
+- Já no `pom.xml`: Actuator, Micrometer Prometheus, datasource-micrometer, validation, `spring-boot-starter-liquibase`, Testcontainers (`spring-boot-testcontainers` + `junit-jupiter` + `postgresql`, BOM em `1.21.4`)
+- **Atenção (Spring Boot 4.x)**: a autoconfiguração do Liquibase foi modularizada — `org.liquibase:liquibase-core` sozinho só traz a ferramenta de migração, não o bean `SpringLiquibase`. É preciso o starter `spring-boot-starter-liquibase` para o Spring de fato rodar as migrations
+- Testcontainers `1.20.x` não negocia corretamente a API do Docker com engines mais novos (erro "client version 1.32 is too old"); por isso o BOM está fixado em `1.21.4`
 
 ## Comandos
 ```bash
@@ -32,26 +34,19 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 
 ## O que já foi feito
 - Projeto Spring Boot, `compose.yaml` (Postgres + Redis com healthchecks), repositório no GitHub
-- `ShortUrl` (entidade) e `ShortUrlRepository` com `findByCode`, `existsByCode` e `registerHit` (incremento atômico de `hits`)
+- `ShortUrl` (entidade) e `ShortUrlRepository` com `findByCode` e `registerHit` (incremento atômico de `hits`)
 - Changelog Liquibase `001-create-short-urls` (tabela `short_urls`, `code` único)
 - `Base62.randomCode(length)`: sorteia cada caractere com `SecureRandom`
 - DTOs `CreateUrlRequest` e `CreateUrlResponse`
 - `ShortUrlService`/`ShortUrlServiceImpl`: `create` (tenta até 5 códigos em caso de colisão no índice único) e `resolve`
 - `ShortUrlController`: `POST /api/urls` (201 + `Location`) e `GET /{code}` (302)
 - Exceções (`ShortUrlNotFoundException` 404, `ShortUrlExpiredException` 410, `ShortUrlCodeGenerationException` 500) e `GlobalExceptionHandler`
-- Compila (`./mvnw compile`), mas **a app ainda não foi executada nem testada**
-
-## Erros a corrigir
-1. **`ShortUrlServiceImpl.create`**: `entity.setTargetUrl(Base62.randomCode(...))` deveria ser `entity.setCode(...)`. Hoje o `code` fica nulo, o insert falha e o `POST /api/urls` sempre devolve 500
-2. **`catch` vazio** de `DataIntegrityViolationException` no `create`: esconde a causa real (qualquer violação vira "colisão"). Logar com `warn` e formatar o `} try {`
-3. **`CreateUrlRequest`**: `@URL` aceita `ftp://` e `file://` (usar `@Pattern(regexp = "^https?://.+")`) e `expiresInDays` sem `@Max` estoura o `Instant` com 500 (ex.: `@Max(3650)`)
-4. **`ShortUrlRepository`**: usa `jakarta.transaction.Transactional`; trocar por `org.springframework.transaction.annotation.Transactional`
-5. Mensagens de exceção inconsistentes ("Short URL Expired", "COULD NOT GENERATE A UNIQUE CODE"); padronizar caixa
-6. `existsByCode` não é usado (checar antes de salvar tem race condition; o índice único é quem decide) e pode sair
-7. `UrlShortenerApplicationTests.contextLoads` vai falhar sem banco (o docker compose é desligado em testes); resolver com Testcontainers
+- Os 7 erros que existiam em `create`/validação/repositório/exceções/teste de contexto foram corrigidos (bug do `setCode`, catch vazio, validação do `@URL`/`expiresInDays`, `Transactional` errado, mensagens inconsistentes, `existsByCode` morto, `contextLoads` sem banco)
+- `UrlShortenerApplicationTests.contextLoads` usa Testcontainers (`@ServiceConnection` + `@Container` com `PostgreSQLContainer`); Liquibase roda as migrations contra o container e o Hibernate valida o schema
+- `./mvnw test` passa (contexto completo sobe com sucesso), mas **a app ainda não foi executada com `spring-boot:run` nem testada manualmente com `curl`**
 
 ## Próximos passos
-1. Corrigir os erros acima, subir a app e testar com `curl` (201, 302, 404, 410, 400)
+1. Subir a app (`spring-boot:run`) e testar os endpoints com `curl` (201, 302, 404, 410, 400)
 2. **Cache no Redis** do `code → targetUrl` no `resolve` (TTL respeitando `expiresAt`)
 3. **Contagem de cliques assíncrona**: hoje `registerHit` é síncrono no caminho do redirect, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
 4. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
