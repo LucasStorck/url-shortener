@@ -1,5 +1,9 @@
 package org.lucas.urlshortener.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import org.lucas.urlshortener.dto.CreateUrlRequest;
 import org.lucas.urlshortener.dto.CreateUrlResponse;
@@ -21,6 +25,11 @@ public class ShortUrlController {
     this.service = service;
   }
 
+  @Operation(summary = "Create a short URL")
+  @ApiResponses({
+    @ApiResponse(responseCode = "201", description = "Short URL created"),
+    @ApiResponse(responseCode = "400", description = "Invalid url (must be http/https, up to 2048 chars) or expiresInDays (1..3650)", content = @Content)
+  })
   @PostMapping("/api/urls")
   public ResponseEntity<CreateUrlResponse> create(@Valid @RequestBody CreateUrlRequest request) {
     ShortUrl created = service.create(request.url(), request.expiresInDays());
@@ -32,6 +41,12 @@ public class ShortUrlController {
     );
   }
 
+  @Operation(summary = "Redirect to the original URL", description = "Responds 302 with the Location header. Swagger UI follows the redirect automatically; use curl -i to see the header.")
+  @ApiResponses({
+    @ApiResponse(responseCode = "302", description = "Redirect to the original URL", content = @Content),
+    @ApiResponse(responseCode = "404", description = "Code not found", content = @Content),
+    @ApiResponse(responseCode = "410", description = "Short URL expired", content = @Content)
+  })
   @GetMapping("/{code}")
   public ResponseEntity<Void> redirect(@PathVariable String code) {
     String target = service.resolve(code);
