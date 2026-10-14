@@ -54,19 +54,22 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 - Swagger UI (branch `feat/swagger`): `@Operation`/`@ApiResponses` em `ShortUrlController` documentando 201/400 (`POST`) e 302/404/410 (`GET`); a especificação já reflete as regras de validação do DTO
 - **Validado no fluxo real** (app rodando pelo IntelliJ + Swagger + navegador): `POST /api/urls` devolve 201 com `code` de 7 caracteres, `shortUrl` montado com o host da requisição e `expiresAt` correto; abrir o link curto leva ao destino (302); `hits` é incrementado a cada acesso que chega à API, inclusive o do Swagger que falha por CORS
 - Também validado com testes `MockMvc` + Testcontainers (descartados, não estão no repositório): 404, 410 (e `hits` não sobe), 400 para `ftp://`, `file://`, `javascript:`, URL vazia, body `{}`, `expiresInDays` 0/negativo/2000000000 e URL > 2048 caracteres, e 200 criações com 200 códigos distintos
+- URL inválida na criação: `@ValidHttpUrl` (`dto/ValidHttpUrl` + `HttpUrlValidator`) faz `URI.create` e exige esquema http/https e host; URL com espaço agora dá 400 em vez de 500 no redirect. Log de colisão corrigido (`attempt + 1`, sem stack trace) e imports explícitos em `CreateUrlRequest` (PR #2)
+- Testes unitários e de camada web (PR #2), usando só o que já vem nos starters `-test` (JUnit Jupiter, Mockito, AssertJ):
+  - `ShortUrlServiceImplTest` (`@ExtendWith(MockitoExtension.class)`, `@Mock` + `@InjectMocks ShortUrlServiceImpl`; o tipo do `@InjectMocks` tem que ser a classe concreta, não a interface)
+  - `ShortControllerTest` (`@WebMvcTest` + `@Import(GlobalExceptionHandler.class)` + `@MockitoBean ShortUrlService`)
+  - No Spring Boot 4 `@MockBean` foi removido: usar `@MockitoBean` (`org.springframework.test.context.bean.override.mockito`); `@WebMvcTest` fica em `org.springframework.boot.webmvc.test.autoconfigure`
+  - `./mvnw test`: 13 testes passando. Rodar a suíte inteira, não só a classe `UrlShortenerApplicationTests`
 
 ## Problemas conhecidos
-1. **URL com espaço** (`https://example.com/a b`): passa no `@Pattern(regexp = "^https?://.+")`, o `POST` devolve 201, mas o `GET /{code}` lança `IllegalArgumentException` em `URI.create(target)` no controller e devolve 500; o link fica quebrado. Corrigir validando com `URI.create` no momento da criação (400) ou rejeitando espaços no regex
-2. Log de colisão em `create` mostra `attempt` começando em 0 ("0/5"); usar `attempt + 1`
-3. Mensagens das exceções em Title Case ("Short URL Not Found", "Could Not Generate A Unique Code After N Attempts"); padronizar em frase normal
-4. `CreateUrlRequest` usa `import jakarta.validation.constraints.*`; preferir imports explícitos
-5. **Máquina do trabalho**: `./mvnw spring-boot:run` iniciado pelo Claude falha com `Unable to establish loopback connection` ao subir o Tomcat (JVM/Windows, provável VPN/antivírus/EDR); não é problema do código. Pelo IntelliJ a app sobe normalmente. Testes com `MockMvc` não abrem porta e funcionam
+1. Mensagens das exceções em Title Case ("Short URL Not Found", "Could Not Generate A Unique Code After N Attempts"); padronizar em frase normal
+2. **Máquina do trabalho**: `./mvnw spring-boot:run` iniciado pelo Claude falha com `Unable to establish loopback connection` ao subir o Tomcat (JVM/Windows, provável VPN/antivírus/EDR); não é problema do código. Pelo IntelliJ a app sobe normalmente. Testes com `MockMvc` não abrem porta e funcionam
 
 ## Próximos passos
-1. Corrigir o problema conhecido nº 1 (URL com espaço) num branch `fix/validate-url`, e os itens 2 a 4
+1. Corrigir o problema conhecido nº 1 (mensagens das exceções) e adicionar os testes pendentes: `http:///x` deve dar 400 (cobre a precedência do `HttpUrlValidator`) e retry de colisão com sucesso no service
 2. **Cache no Redis** do `code → targetUrl` no `resolve` (TTL respeitando `expiresAt`)
 3. **Contagem de cliques assíncrona**: hoje `registerHit` é síncrono no caminho do redirect, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
 4. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
 5. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
-6. Testes: unitários do service, de integração do controller (`MockMvc` + Testcontainers, cobrindo os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
+6. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
 7. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
