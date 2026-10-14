@@ -45,6 +45,14 @@ cd frontend && npm test       # testes do frontend
 - Frontend: TypeScript em modo estrito, indentação de 2 espaços, SCSS por componente, um serviço (`UrlService`) concentra as chamadas HTTP; a UI nunca monta URLs da API fora dele
 - Frontend: tipos espelham os DTOs do backend (`CreateUrlRequest`, `CreateUrlResponse`); erros 400 do backend (`ProblemDetail`) são exibidos na tela
 
+## Design do frontend
+- Escopo: **uma tela só** — campo de entrada da URL (mais `expiresInDays` opcional) e saída com o link curto e botão de copiar; erros 400 do backend aparecem na própria tela
+- Estilo: **neobrutalismo** com visual retrô de papel creme, inspirado em https://7a0.com.br/ (copiar só a linguagem visual, nunca a identidade, os textos nem o tema do site): sombra dura sem desfoque, bordas pretas grossas, cantos quase retos (`border-radius: 2px`), cores chapadas, títulos grandes em caixa alta
+- Fontes: **IBM Plex** — `IBM Plex Sans Condensed` 700 em maiúsculas nos títulos e botões, `IBM Plex Sans` no texto, `IBM Plex Mono` no link curto/código. Carregar por Google Fonts ou self-host (decidir ao criar o app)
+- Paleta (tokens em `:root` no SCSS): papel `#f3ecd8`, tinta `#1b1a17`, destaque `#e8462b`; sombra `3px 3px 0 var(--ink)`
+- Botão: sombra dura e, no `:active`, desloca 3px e remove a sombra (efeito de apertar)
+- Conferir o contraste do texto branco sobre o vermelho de destaque antes de fixar a cor
+
 ## O que já foi feito
 - Projeto Spring Boot, `compose.yaml` (Postgres + Redis com healthchecks), repositório no GitHub
 - `ShortUrl` (entidade) e `ShortUrlRepository` com `findByCode` e `registerHit` (incremento atômico de `hits`)
@@ -81,7 +89,7 @@ cd frontend && npm test       # testes do frontend
 2. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
 3. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
 4. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
-5. **Frontend simples** (`feat/frontend`): criar o app em `frontend/`, proxy para o backend, tela única com formulário (URL + `expiresInDays` opcional), resultado com o link curto e botão de copiar, e mensagens de erro da validação (400)
+5. **Frontend simples** (`feat/frontend`): criar o app em `frontend/`, proxy para o backend, tela única (ver "Design do frontend") com campo da URL (+ `expiresInDays` opcional), saída com o link curto e botão de copiar, e mensagens de erro da validação (400)
 6. Testes do frontend: `UrlService` com `HttpTestingController` e o componente do formulário
 7. Opcional: exibir contagem de cliques no frontend (depende do endpoint de estatísticas por código, item 8)
 8. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
