@@ -65,6 +65,19 @@ public class ShortUrlServiceImplTest {
   }
 
   @Test
+  void create_retriesOnCollisionAndSucceeds() {
+    when(repository.saveAndFlush(any(ShortUrl.class)))
+      .thenThrow(new DataIntegrityViolationException("duplicate"))
+      .thenAnswer(invocation -> invocation.getArgument(0));
+
+    ShortUrl result = service.create("https://example.com", null);
+
+    assertThat(result).isNotNull();
+    assertThat(result.getCode()).hasSize(7);
+    verify(repository, times(2)).saveAndFlush(any(ShortUrl.class));
+  }
+
+  @Test
   public void resolve_returnsTargetAndRegistersHit() {
     ShortUrl entity = new ShortUrl();
     entity.setId("id-1");

@@ -32,6 +32,22 @@ public class ShortControllerTest {
   ShortUrlService service;
 
   @Test
+  void create_rejectsUrlWithSpace() throws Exception {
+    mockMvc.perform(post("/api/urls")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"url\":\"https://example.com/a b\"}"))
+      .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void create_rejectsHttpUrlWithoutHost() throws Exception {
+    mockMvc.perform(post("/api/urls")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"url\":\"http:///x\"}"))
+      .andExpect(status().isBadRequest());
+  }
+
+  @Test
   public void create_returns201WithLocation() throws Exception{
     ShortUrl created = new ShortUrl();
     created.setCode("abc1234");
@@ -44,22 +60,6 @@ public class ShortControllerTest {
       .andExpect(status().isCreated())
       .andExpect(header().string("Location", "http://localhost/abc1234"))
       .andExpect(jsonPath("$.code").value("abc1234"));
-  }
-
-  @Test
-  void create_rejectsUrlWithSpace() throws Exception {
-    mockMvc.perform(post("/api/urls")
-        .contentType(MediaType.APPLICATION_JSON)
-        .content("{\"url\":\"https://example.com/a b\"}"))
-      .andExpect(status().isBadRequest());
-  }
-
-  @Test
-  void create_rejectsHttpUrlWithoutHost() throws Exception {
-    mockMvc.perform(post("/api/urls")
-        .contentType(MediaType.APPLICATION_JSON)
-        .content("{\"url\":\"https:///x\"}"))
-      .andExpect(status().isBadRequest());
   }
 
   @Test
