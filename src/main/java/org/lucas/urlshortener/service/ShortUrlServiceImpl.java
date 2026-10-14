@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 @Service
 public class ShortUrlServiceImpl implements ShortUrlService {
@@ -22,9 +23,11 @@ public class ShortUrlServiceImpl implements ShortUrlService {
   private static final Logger log = LoggerFactory.getLogger(ShortUrlServiceImpl.class);
 
   private final ShortUrlRepository repository;
+  private final ShortUrlCache cache;
 
-  public ShortUrlServiceImpl(ShortUrlRepository repository) {
+  public ShortUrlServiceImpl(ShortUrlRepository repository, ShortUrlCache cache) {
     this.repository = repository;
+    this.cache = cache;
   }
 
   @Override
@@ -47,11 +50,21 @@ public class ShortUrlServiceImpl implements ShortUrlService {
 
   @Override
   public String resolve(String code) {
+    Optional<String> cached = cache.get(code);
+    if (cached.isPresent()) {
+      repository.registerHit(code, Instant.now());
+      return cached.get();
+    }
+
     ShortUrl entity = repository.findByCode(code)
-            .orElseThrow(() -> new ShortUrlNotFoundException(code));
-    if (entity.getExpiresAt() != null && entity.getExpiresAt().isBefore(Instant.now()))
+      .orElseThrow(() -> new ShortUrlNotFoundException(code));
+
+    if (entity.getExpiresAt() != null && entity.getExpiresAt().isBefore(Instant.now())) {
       throw new ShortUrlExpiredException(code);
-    repository.registerHit(entity.getId(), Instant.now());
+    }
+
+    cache.put(code, entity.getTargetUrl(), entity.getExpiresAt());
+    repository.registerHit(code, Instant.now());
     return entity.getTargetUrl();
   }
 }

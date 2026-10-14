@@ -17,6 +17,6 @@ public interface ShortUrlRepository extends JpaRepository<ShortUrl, String> {
 
   @Modifying
   @Transactional
-  @Query("update ShortUrl s set s.hits = s.hits + 1, s.lastAccessedAt = :now where s.id = :id")
-  void registerHit(@Param("id") String id, @Param("now") Instant now);
+  @Query("update ShortUrl s set s.hits = s.hits + 1, s.lastAccessedAt = :now where s.code = :code")
+  void registerHit(@Param("code") String code, @Param("now") Instant now);
 }
