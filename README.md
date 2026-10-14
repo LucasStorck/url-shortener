@@ -7,13 +7,15 @@ A URL shortener built with Java and Spring Boot, with click metrics.
 - Create a short link for any http(s) URL, with an optional expiration
 - Redirect (`302`) from the short code to the original URL
 - Click count and last access time per link
+- Redirect lookups cached in Redis (cache-aside, TTL capped by the link's expiration); if Redis is down, the app falls back to the database
+- Input validation: only http(s) URLs with a host are accepted
 - Interactive API docs with Swagger UI
 
 ## Stack
 
 - Java 25, Spring Boot 4.1.1, Maven
 - PostgreSQL with Liquibase migrations
-- Redis (planned: caching and rate limiting)
+- Redis (cache for redirects; rate limiting planned)
 - Docker Compose, Testcontainers
 
 ## Running locally
@@ -71,7 +73,7 @@ Swagger UI is available at `http://localhost:8080/swagger-ui.html`. It follows r
 
 ## Roadmap
 
-- Redis cache for redirects
+- GitHub Actions CI
 - Asynchronous click counting
 - Rate limiting with Bucket4j
 - Metrics with Micrometer, Prometheus and Grafana
