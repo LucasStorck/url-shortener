@@ -85,11 +85,12 @@ cd frontend && npm test       # testes do frontend
 4. O cache pode servir um link por até 1 hora depois de removido do banco; hoje não existe endpoint de remoção. Considerar invalidar a chave se ele for criado
 
 ## Próximos passos
-1. **Contagem de cliques assíncrona**: hoje `registerHit` (agora por `code`) é síncrono no caminho do redirect, tanto no acerto quanto no miss do cache, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
-2. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
-3. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
-4. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
-5. **Frontend simples** (`feat/frontend`): criar o app em `frontend/`, proxy para o backend, tela única (ver "Design do frontend") com campo da URL (+ `expiresInDays` opcional), saída com o link curto e botão de copiar, e mensagens de erro da validação (400)
-6. Testes do frontend: `UrlService` com `HttpTestingController` e o componente do formulário
-7. Opcional: exibir contagem de cliques no frontend (depende do endpoint de estatísticas por código, item 8)
-8. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
+1. **Observabilidade (versão simples)** (`feat/observability`): (a) expor `/actuator/prometheus` (`management.endpoints.web.exposure.include: health,prometheus` — hoje não há nada de `management` no `application.yaml`); (b) poucas métricas Micrometer via `MeterRegistry` no service: `urls.created`, `urls.redirects` com tag `result` (`hit`/`miss`/`not_found`/`expired`), cache hit/miss e colisões de código, testáveis com `SimpleMeterRegistry`; **nunca usar o `code` como tag** (alta cardinalidade); (c) serviço `prometheus` no `compose.yaml` com `prometheus.yml` raspando a app (app pelo IntelliJ no host: alvo `host.docker.internal:8080`; em Linux/WSL talvez `extra_hosts: host.docker.internal:host-gateway`); validar as consultas na UI do Prometheus (`localhost:9090`), ex.: `rate(urls_redirects_total[1m])`. Decidir aqui se o Redis deve contar no `/actuator/health` (problema conhecido nº 3)
+2. **Grafana** (`feat/grafana`, depois do passo 1; faz parte da especificação base): configurar por **provisioning** (datasource e dashboard em JSON versionados, montados no contêiner, para o `docker compose up` já subir pronto), com 4 ou 5 painéis ligados às métricas do passo 1 (redirects por resultado, cache hit/miss, criações, colisões, latência do redirect). Se o tempo apertar, o Prometheus sozinho já cumpre a observabilidade
+3. **Contagem de cliques assíncrona**: hoje `registerHit` (agora por `code`) é síncrono no caminho do redirect, tanto no acerto quanto no miss do cache, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado. Já nasce com métricas (cliques perdidos/falhas)
+4. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429 e métrica de requisições rejeitadas
+5. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
+6. **Frontend simples** (`feat/frontend`): criar o app em `frontend/`, proxy para o backend, tela única (ver "Design do frontend") com campo da URL (+ `expiresInDays` opcional), saída com o link curto e botão de copiar, e mensagens de erro da validação (400)
+7. Testes do frontend: `UrlService` com `HttpTestingController` e o componente do formulário
+8. Opcional: exibir contagem de cliques no frontend (depende do endpoint de estatísticas por código, item 9)
+9. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
