@@ -60,16 +60,16 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
   - `ShortControllerTest` (`@WebMvcTest` + `@Import(GlobalExceptionHandler.class)` + `@MockitoBean ShortUrlService`)
   - No Spring Boot 4 `@MockBean` foi removido: usar `@MockitoBean` (`org.springframework.test.context.bean.override.mockito`); `@WebMvcTest` fica em `org.springframework.boot.webmvc.test.autoconfigure`
   - `./mvnw test`: 13 testes passando. Rodar a suíte inteira, não só a classe `UrlShortenerApplicationTests`
+- Mensagens das exceções em frase normal, teste de URL sem host (`http:///x`, cobre a precedência do `HttpUrlValidator`; validado com o ciclo vermelho/verde) e teste de retry de colisão com sucesso; `./mvnw test`: 15 testes (PR #3)
 
 ## Problemas conhecidos
-1. Mensagens das exceções em Title Case ("Short URL Not Found", "Could Not Generate A Unique Code After N Attempts"); padronizar em frase normal
-2. **Máquina do trabalho**: `./mvnw spring-boot:run` iniciado pelo Claude falha com `Unable to establish loopback connection` ao subir o Tomcat (JVM/Windows, provável VPN/antivírus/EDR); não é problema do código. Pelo IntelliJ a app sobe normalmente. Testes com `MockMvc` não abrem porta e funcionam
+1. **Máquina do trabalho**: `./mvnw spring-boot:run` iniciado pelo Claude falha com `Unable to establish loopback connection` ao subir o Tomcat (JVM/Windows, provável VPN/antivírus/EDR); não é problema do código. Pelo IntelliJ a app sobe normalmente. Testes com `MockMvc` não abrem porta e funcionam
+2. O IntelliJ sugere trocar `http://` por `https://` em strings de teste; no teste `http:///x` isso desfaz a cobertura do bug de precedência do `HttpUrlValidator` (só o esquema `http` o exercita). Manter `http` (ideal: `@SuppressWarnings("HttpUrlsUsage")` + comentário)
 
 ## Próximos passos
-1. Corrigir o problema conhecido nº 1 (mensagens das exceções) e adicionar os testes pendentes: `http:///x` deve dar 400 (cobre a precedência do `HttpUrlValidator`) e retry de colisão com sucesso no service
-2. **Cache no Redis** do `code → targetUrl` no `resolve` (TTL respeitando `expiresAt`)
-3. **Contagem de cliques assíncrona**: hoje `registerHit` é síncrono no caminho do redirect, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
-4. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
-5. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
-6. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
-7. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
+1. **Cache no Redis** do `code → targetUrl` no `resolve` (TTL respeitando `expiresAt`)
+2. **Contagem de cliques assíncrona**: hoje `registerHit` é síncrono no caminho do redirect, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
+3. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
+4. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
+5. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
+6. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
