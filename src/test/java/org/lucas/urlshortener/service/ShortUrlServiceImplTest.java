@@ -31,6 +31,8 @@ public class ShortUrlServiceImplTest {
   ShortUrlRepository repository;
   @InjectMocks
   ShortUrlServiceImpl service;
+  @Mock
+  ShortUrlCache cache;
 
   @Test
   public void create_savesEntityWithGeneratedCode() {
@@ -88,7 +90,7 @@ public class ShortUrlServiceImplTest {
     String target = service.resolve("abc1234");
 
     assertThat(target).isEqualTo("https://example.com");
-    verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("id-1"), any(Instant.class));
+    verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("abc1234"), any(Instant.class));
   }
 
   @Test
@@ -112,6 +114,41 @@ public class ShortUrlServiceImplTest {
       .isInstanceOf(ShortUrlExpiredException.class);
 
     verify(repository, never()).registerHit(any(), any());
+  }
+
+  @Test
+  void resolve_cacheHit_skipsDatabaseButRegistersHit() {
+    when(cache.get("abc1234")).thenReturn(Optional.of("https://example.com"));
+
+    String target = service.resolve("abc1234");
+
+    assertThat(target).isEqualTo("https://example.com");
+    verify(repository, never()).findByCode(any());
+    verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("abc1234"), any(Instant.class));
+  }
+
+  @Test
+  void resolve_cacheMiss_populatesCache() {
+    ShortUrl entity = new ShortUrl();
+    entity.setCode("abc1234");
+    entity.setTargetUrl("https://example.com");
+    when(repository.findByCode("abc1234")).thenReturn(Optional.of(entity));
+
+    service.resolve("abc1234");
+
+    verify(cache).put("abc1234", "https://example.com", null);
+  }
+
+  @Test
+  void resolve_expired_doesNotPopulateCache() {
+    ShortUrl entity = new ShortUrl();
+    entity.setExpiresAt(Instant.now().minus(1, ChronoUnit.DAYS));
+    when(repository.findByCode("old")).thenReturn(Optional.of(entity));
+
+    assertThatThrownBy(() -> service.resolve("old"))
+      .isInstanceOf(ShortUrlExpiredException.class);
+
+    verify(cache, never()).put(any(), any(), any());
   }
 
 }
