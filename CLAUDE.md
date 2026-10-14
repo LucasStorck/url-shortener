@@ -10,7 +10,7 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 
 ## Stack
 - Java 25, Spring Boot 4.1.1, Maven (wrapper: `./mvnw`)
-- PostgreSQL 15 + Liquibase (schema), Redis 7 (ainda sem uso)
+- PostgreSQL 15 + Liquibase (schema), Redis 7 (cache do `resolve`)
 - `spring-boot-docker-compose`: ao subir a app, o `compose.yaml` sobe o Postgres e o Redis e a conexão é configurada automaticamente (por isso as portas são publicadas sem porta fixa no host)
 - Já no `pom.xml`: Actuator, Micrometer Prometheus, datasource-micrometer, validation, `spring-boot-starter-liquibase`, Testcontainers (`spring-boot-testcontainers` + `junit-jupiter` + `postgresql`, BOM em `1.21.4`)
 - **Atenção (Spring Boot 4.x)**: a autoconfiguração do Liquibase foi modularizada — `org.liquibase:liquibase-core` sozinho só traz a ferramenta de migração, não o bean `SpringLiquibase`. É preciso o starter `spring-boot-starter-liquibase` para o Spring de fato rodar as migrations
@@ -61,15 +61,18 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
   - No Spring Boot 4 `@MockBean` foi removido: usar `@MockitoBean` (`org.springframework.test.context.bean.override.mockito`); `@WebMvcTest` fica em `org.springframework.boot.webmvc.test.autoconfigure`
   - `./mvnw test`: 13 testes passando. Rodar a suíte inteira, não só a classe `UrlShortenerApplicationTests`
 - Mensagens das exceções em frase normal, teste de URL sem host (`http:///x`, cobre a precedência do `HttpUrlValidator`; validado com o ciclo vermelho/verde) e teste de retry de colisão com sucesso; `./mvnw test`: 15 testes (PR #3)
+- Cache no Redis do `resolve` (PR #4): `ShortUrlCache` (`StringRedisTemplate`, chave `short-url:<code>` → URL), cache-aside, TTL = menor entre o tempo até `expiresAt` e 1 hora; falhas do Redis são logadas e ignoradas (fallback para o banco). `registerHit` passou a ser por `code` (acerto de cache não tem o `id`). `application.yaml` com `timeout`/`connect-timeout` de 200ms: sem isso, com o Redis caindo com a app já conectada, o Lettuce enfileira o comando por ~60s e o redirect trava. `./mvnw test`: 22 testes
+- Validado à mão com Redis real: chave criada com TTL ≈ 3600s e redirect funcionando com o Redis parado (app subindo sem Redis)
 
 ## Problemas conhecidos
 1. **Máquina do trabalho**: `./mvnw spring-boot:run` iniciado pelo Claude falha com `Unable to establish loopback connection` ao subir o Tomcat (JVM/Windows, provável VPN/antivírus/EDR); não é problema do código. Pelo IntelliJ a app sobe normalmente. Testes com `MockMvc` não abrem porta e funcionam
 2. O IntelliJ sugere trocar `http://` por `https://` em strings de teste; no teste `http:///x` isso desfaz a cobertura do bug de precedência do `HttpUrlValidator` (só o esquema `http` o exercita). Manter `http` (ideal: `@SuppressWarnings("HttpUrlsUsage")` + comentário)
+3. Com o Redis fora, o health check do Redis do Actuator provavelmente deixa `/actuator/health` em `DOWN` (visto pela stack trace reativa no log; não verificado). Decidir na etapa de observabilidade se o Redis deve contar no health geral
+4. O cache pode servir um link por até 1 hora depois de removido do banco; hoje não existe endpoint de remoção. Considerar invalidar a chave se ele for criado
 
 ## Próximos passos
-1. **Cache no Redis** do `code → targetUrl` no `resolve` (TTL respeitando `expiresAt`)
-2. **Contagem de cliques assíncrona**: hoje `registerHit` é síncrono no caminho do redirect, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
-3. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
-4. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
-5. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
-6. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
+1. **Contagem de cliques assíncrona**: hoje `registerHit` (agora por `code`) é síncrono no caminho do redirect, tanto no acerto quanto no miss do cache, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado
+2. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429
+3. **Observabilidade**: expor `/actuator/prometheus`, métricas customizadas com Micrometer (criações, redirects, cache hit/miss, falhas), e adicionar Prometheus e Grafana ao `compose.yaml` com um dashboard
+4. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
+5. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
