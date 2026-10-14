@@ -39,7 +39,7 @@ public class ShortUrlServiceImpl implements ShortUrlService {
       try {
         return repository.saveAndFlush(entity);
       } catch (DataIntegrityViolationException e) {
-        log.warn("Code Collision Generating Short URL, Retrying (Attempts {}/{})", attempt, MAX_ATTEMPTS, e);
+        log.warn("Code collision generating short URL, retrying (attempts {}/{})", attempt + 1, MAX_ATTEMPTS);
       }
     }
     throw new ShortUrlCodeGenerationException(MAX_ATTEMPTS);
@@ -49,7 +49,6 @@ public class ShortUrlServiceImpl implements ShortUrlService {
   public String resolve(String code) {
     ShortUrl entity = repository.findByCode(code)
             .orElseThrow(() -> new ShortUrlNotFoundException(code));
-
     if (entity.getExpiresAt() != null && entity.getExpiresAt().isBefore(Instant.now()))
       throw new ShortUrlExpiredException(code);
     repository.registerHit(entity.getId(), Instant.now());
