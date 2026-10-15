@@ -17,15 +17,15 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 - Testcontainers `1.20.x` não negocia corretamente a API do Docker com engines mais novos (erro "client version 1.32 is too old"); por isso o BOM está fixado em `1.21.4`
 - Swagger UI via `springdoc-openapi-starter-webmvc-ui` `3.1.1` (linha do Spring Boot 4; versão fixada no `pom.xml`, fora do BOM do Boot)
 - Spring Boot 4 usa **Jackson 3**: o pacote é `tools.jackson.databind` (`ObjectMapper`, `JsonNode`), não `com.fasterxml.jackson.databind`. Em testes, `@AutoConfigureMockMvc` vem de `org.springframework.boot.webmvc.test.autoconfigure`
-- Frontend (planejado, pasta `frontend/`): Angular (componentes standalone, signals), TypeScript, SCSS. Versão a registrar aqui ao criar o projeto com o Angular CLI (`ng version`)
-- Dev do frontend: `ng serve` em `http://localhost:4200` com `proxy.conf.json` apontando `/api` para `http://localhost:8080`, para não exigir CORS no backend. O `shortUrl` é montado com o host da requisição: pelo proxy ele vem com a porta 4200 e o `GET /{code}` também precisaria passar pelo proxy; abrir o link curto sempre pela porta 8080
+- Frontend (planejado, pasta `frontend/`): React + TypeScript com Vite, Tailwind CSS e componentes do [neobrutalism.dev](https://www.neobrutalism.dev/) (construído sobre shadcn/ui: os componentes são **copiados** para o projeto, em `src/components/ui/`, via CLI `npx shadcn@latest add <url do componente>`, e não instalados como pacote; podem ser editados à mão). Registrar aqui as versões ao criar o projeto (React, Vite, Tailwind)
+- Dev do frontend: `npm run dev` (Vite) em `http://localhost:5173` com `server.proxy` no `vite.config.ts` apontando `/api` para `http://localhost:8080`, para não exigir CORS no backend. O `shortUrl` é montado com o host da requisição: pelo proxy ele vem com a porta 5173 e o `GET /{code}` também precisaria passar pelo proxy; abrir o link curto sempre pela porta 8080
 
 ## Comandos
 ```bash
 ./mvnw compile                # compila
 ./mvnw test                   # testes (precisa do Docker rodando, por causa do Testcontainers)
 ./mvnw spring-boot:run        # sobe a app (e o docker compose junto)
-cd frontend && npm start      # sobe o Angular em :4200 (backend precisa estar rodando em :8080)
+cd frontend && npm run dev    # sobe o Vite em :5173 (backend precisa estar rodando em :8080)
 cd frontend && npm test       # testes do frontend
 ```
 - Swagger UI: `http://localhost:8080/swagger-ui.html`; especificação em `/v3/api-docs`
@@ -42,15 +42,16 @@ cd frontend && npm test       # testes do frontend
 - Commits: Conventional Commits, em inglês (`feat: ...`, `build: ...`)
 - Git: um branch por feature/correção (`feat/...`, `fix/...`) + PR para o `main`; antes de começar, `git pull` no `main` (já houve trabalho feito em outra máquina que não estava no disco local)
 - Commits sem linha `Co-Authored-By` (pedido do dono)
-- Frontend: TypeScript em modo estrito, indentação de 2 espaços, SCSS por componente, um serviço (`UrlService`) concentra as chamadas HTTP; a UI nunca monta URLs da API fora dele
+- Frontend: TypeScript em modo estrito, indentação de 2 espaços, componentes funcionais com hooks, estilo por classes utilitárias do Tailwind (sem SCSS), um módulo (`urlService.ts`, funções com `fetch`) concentra as chamadas HTTP; a UI nunca monta URLs da API fora dele
 - Frontend: tipos espelham os DTOs do backend (`CreateUrlRequest`, `CreateUrlResponse`); erros 400 do backend (`ProblemDetail`) são exibidos na tela
 
 ## Design do frontend
 - Escopo: **uma tela só** — campo de entrada da URL (mais `expiresInDays` opcional) e saída com o link curto e botão de copiar; erros 400 do backend aparecem na própria tela
+- Componentes: usar os do neobrutalism.dev (Button, Input, Card, Alert etc.) em vez de escrever CSS de botão/campo do zero; personalizar pelo tema (variáveis CSS do shadcn em `index.css`), não componente por componente
 - Estilo: **neobrutalismo** com visual retrô de papel creme, inspirado em https://7a0.com.br/ (copiar só a linguagem visual, nunca a identidade, os textos nem o tema do site): sombra dura sem desfoque, bordas pretas grossas, cantos quase retos (`border-radius: 2px`), cores chapadas, títulos grandes em caixa alta
 - Fontes: **IBM Plex** — `IBM Plex Sans Condensed` 700 em maiúsculas nos títulos e botões, `IBM Plex Sans` no texto, `IBM Plex Mono` no link curto/código. Carregar por Google Fonts ou self-host (decidir ao criar o app)
-- Paleta (tokens em `:root` no SCSS): papel `#f3ecd8`, tinta `#1b1a17`, destaque `#e8462b`; sombra `3px 3px 0 var(--ink)`
-- Botão: sombra dura e, no `:active`, desloca 3px e remove a sombra (efeito de apertar)
+- Paleta (sobrescrever as variáveis do tema do neobrutalism.dev em `:root`, no `index.css`): papel `#f3ecd8` (`--background`), tinta `#1b1a17` (`--foreground`/`--border`), destaque `#e8462b` (`--main`); sombra `3px 3px 0` na cor da tinta (`--shadow` do tema)
+- Botão: o do neobrutalism.dev já tem sombra dura e efeito de apertar no `:active`; ajustar o deslocamento para 3px se o padrão for diferente
 - Conferir o contraste do texto branco sobre o vermelho de destaque antes de fixar a cor
 
 ## O que já foi feito
@@ -90,7 +91,7 @@ cd frontend && npm test       # testes do frontend
 3. **Contagem de cliques assíncrona**: hoje `registerHit` (agora por `code`) é síncrono no caminho do redirect, tanto no acerto quanto no miss do cache, o que contradiz a especificação. Opções: `@Async`, ou contar no Redis (`INCR`) e sincronizar com o Postgres em lote por job agendado. Já nasce com métricas (cliques perdidos/falhas)
 4. **Rate limiting com Bucket4j** apoiado no Redis (por IP), com resposta 429 e métrica de requisições rejeitadas
 5. Testes de integração (`@SpringBootTest` + Testcontainers, cobrindo `registerHit` real e os cenários já validados à mão). Na contagem de cliques, considerar filtrar robôs e pré-visualizadores de link (WhatsApp, Slack) por `User-Agent`
-6. **Frontend simples** (`feat/frontend`): criar o app em `frontend/`, proxy para o backend, tela única (ver "Design do frontend") com campo da URL (+ `expiresInDays` opcional), saída com o link curto e botão de copiar, e mensagens de erro da validação (400)
-7. Testes do frontend: `UrlService` com `HttpTestingController` e o componente do formulário
+6. **Frontend simples** (`feat/frontend`): criar o app em `frontend/` (Vite + React + TS, Tailwind, inicializar o shadcn e adicionar os componentes do neobrutalism.dev), proxy para o backend, tela única (ver "Design do frontend") com campo da URL (+ `expiresInDays` opcional), saída com o link curto e botão de copiar, e mensagens de erro da validação (400)
+7. Testes do frontend: Vitest + React Testing Library: `urlService` com `fetch` mockado e o componente do formulário (inclusive a exibição do erro 400)
 8. Opcional: exibir contagem de cliques no frontend (depende do endpoint de estatísticas por código, item 10)
 9. Opcional: endpoint de estatísticas por código, limpeza de URLs expiradas
