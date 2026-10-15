@@ -2,6 +2,7 @@ package org.lucas.urlshortener.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
@@ -10,6 +11,7 @@ import org.lucas.urlshortener.dto.CreateUrlResponse;
 import org.lucas.urlshortener.model.ShortUrl;
 import org.lucas.urlshortener.service.ShortUrlService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -28,7 +30,8 @@ public class ShortUrlController {
   @Operation(summary = "Create a short URL")
   @ApiResponses({
     @ApiResponse(responseCode = "201", description = "Short URL created"),
-    @ApiResponse(responseCode = "400", description = "Invalid url (must be http/https, up to 2048 chars) or expiresInDays (1..3650)", content = @Content)
+    @ApiResponse(responseCode = "400", description = "Invalid url (must be http/https, up to 2048 chars) or expiresInDays (1..3650). The body is a ProblemDetail with an 'errors' map of field to message",
+      content = @Content(mediaType = "application/problem+json", schema = @Schema(implementation = ProblemDetail.class)))
   })
   @PostMapping("/api/urls")
   public ResponseEntity<CreateUrlResponse> create(@Valid @RequestBody CreateUrlRequest request) {

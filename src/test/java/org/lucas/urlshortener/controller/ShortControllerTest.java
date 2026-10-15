@@ -36,7 +36,18 @@ public class ShortControllerTest {
     mockMvc.perform(post("/api/urls")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"url\":\"https://example.com/a b\"}"))
-      .andExpect(status().isBadRequest());
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.errors.url").exists());
+  }
+
+  @Test
+  void create_rejectsNonPositiveExpiresInDays() throws Exception {
+    mockMvc.perform(post("/api/urls")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"url\":\"https://example.com\",\"expiresInDays\":0}"))
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.errors.expiresInDays").exists())
+      .andExpect(jsonPath("$.errors.url").doesNotExist());
   }
 
   @Test
@@ -67,7 +78,8 @@ public class ShortControllerTest {
     mockMvc.perform(post("/api/urls")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"url\":\"javascript:alert(1)\"}"))
-      .andExpect(status().isBadRequest());
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.errors.url").exists());
   }
 
   @Test
