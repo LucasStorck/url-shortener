@@ -15,4 +15,6 @@ jobs:
           distribution: temurin
           java-version: 25
           cache: maven
+          cache-dependency-path: backend/pom.xml
       - run: ./mvnw -B test
+        working-directory: backend

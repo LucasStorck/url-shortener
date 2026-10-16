@@ -23,7 +23,7 @@ A URL shortener built with Java and Spring Boot, with click metrics.
 Requirements: JDK 25 and Docker.
 
 ```bash
-./mvnw spring-boot:run
+cd backend && ./mvnw spring-boot:run
 ```
 
 Spring Boot starts PostgreSQL and Redis from `compose.yaml` automatically and configures the connections. The API listens on `http://localhost:8080`.
@@ -31,7 +31,7 @@ Spring Boot starts PostgreSQL and Redis from `compose.yaml` automatically and co
 Run the tests (Docker must be running):
 
 ```bash
-./mvnw test
+cd backend && ./mvnw test
 ```
 
 ## API

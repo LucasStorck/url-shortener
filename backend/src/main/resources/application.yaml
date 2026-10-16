@@ -1,6 +1,9 @@
 spring:
   application:
     name: url-shortener
+  docker:
+    compose:
+      file: ../compose.yaml
   jpa:
     hibernate:
       ddl-auto: validate
