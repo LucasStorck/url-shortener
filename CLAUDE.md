@@ -9,10 +9,10 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 - Spring Actuator + Micrometer + Prometheus/Grafana para observabilidade
 
 ## Stack
-- Java 25, Spring Boot 4.1.1, Maven (wrapper: `./mvnw`)
+- Java 25, Spring Boot 4.1.1, Maven (wrapper: `./mvnw`, dentro de `backend/`)
 - PostgreSQL 15 + Liquibase (schema), Redis 7 (cache do `resolve`)
-- `spring-boot-docker-compose`: ao subir a app, o `compose.yaml` sobe o Postgres e o Redis e a conexão é configurada automaticamente (por isso as portas são publicadas sem porta fixa no host)
-- Já no `pom.xml`: Actuator, Micrometer Prometheus, datasource-micrometer, validation, `spring-boot-starter-liquibase`, Testcontainers (`spring-boot-testcontainers` + `junit-jupiter` + `postgresql`, BOM em `1.21.4`)
+- `spring-boot-docker-compose`: ao subir a app, o `compose.yaml` (na raiz do repositório, apontado por `spring.docker.compose.file: ../compose.yaml`) sobe o Postgres e o Redis e a conexão é configurada automaticamente (por isso as portas são publicadas sem porta fixa no host)
+- Já no `backend/pom.xml`: Actuator, Micrometer Prometheus, datasource-micrometer, validation, `spring-boot-starter-liquibase`, Testcontainers (`spring-boot-testcontainers` + `junit-jupiter` + `postgresql`, BOM em `1.21.4`)
 - **Atenção (Spring Boot 4.x)**: a autoconfiguração do Liquibase foi modularizada — `org.liquibase:liquibase-core` sozinho só traz a ferramenta de migração, não o bean `SpringLiquibase`. É preciso o starter `spring-boot-starter-liquibase` para o Spring de fato rodar as migrations
 - Testcontainers `1.20.x` não negocia corretamente a API do Docker com engines mais novos (erro "client version 1.32 is too old"); por isso o BOM está fixado em `1.21.4`
 - Swagger UI via `springdoc-openapi-starter-webmvc-ui` `3.1.1` (linha do Spring Boot 4; versão fixada no `pom.xml`, fora do BOM do Boot)
@@ -20,11 +20,17 @@ O dono quer **entender** o código: explique decisões e trade-offs, e prefira m
 - Frontend (pasta `frontend/`): React 19 + TypeScript 6 com Vite 8, Tailwind CSS e componentes do [neobrutalism.dev](https://www.neobrutalism.dev/) (construído sobre shadcn/ui: os componentes são **copiados** para o projeto, em `src/components/ui/`, via CLI `npx shadcn@latest add <url do componente>`, e não instalados como pacote; podem ser editados à mão). Versões: Tailwind 4.3, shadcn CLI 4.21, `@base-ui/react` 1.9 (os componentes do neobrutalism.dev vieram sobre Base UI, não Radix). O alias `@` → `src` fica no `vite.config.ts` e no `paths` dos `tsconfig` (sem `baseUrl`, depreciado no TypeScript 6). `erasableSyntaxOnly` está ligado: sem parameter properties em construtores (declarar o campo na classe)
 - Dev do frontend: `npm run dev` (Vite) em `http://localhost:5173` com `server.proxy` no `vite.config.ts` apontando `/api` para `http://localhost:8080`, para não exigir CORS no backend. O `shortUrl` é montado com o host da requisição: pelo proxy ele vem com a porta 5173 e o `GET /{code}` também precisaria passar pelo proxy; abrir o link curto sempre pela porta 8080
 
+## Estrutura do repositório
+- `backend/` (Spring Boot: `pom.xml`, `mvnw`, `.mvn`, `src/`), `frontend/` (Vite) e, na raiz, `compose.yaml` (infra compartilhada: Postgres/Redis e, depois, Prometheus/Grafana), `.github/` e `CLAUDE.md`. Movido no PR `refactor/move-backend`; o histórico segue com `git log --follow`
+- Pacotes Java e caminhos citados abaixo (`src/main/...`, `application.yaml`) ficam sob `backend/`
+- Ao rodar pelo IntelliJ, o working directory da run configuration deve ser `backend/` (o caminho `../compose.yaml` é relativo a ele)
+- Neste shell o `JAVA_HOME` aponta para o JDK 21; para o Maven usar `~/.jdks/openjdk-25.0.2`
+
 ## Comandos
 ```bash
-./mvnw compile                # compila
-./mvnw test                   # testes (precisa do Docker rodando, por causa do Testcontainers)
-./mvnw spring-boot:run        # sobe a app (e o docker compose junto)
+cd backend && ./mvnw compile  # compila
+cd backend && ./mvnw test     # testes (precisa do Docker rodando, por causa do Testcontainers)
+cd backend && ./mvnw spring-boot:run  # sobe a app (e o docker compose junto)
 cd frontend && npm run dev    # sobe o Vite em :5173 (backend precisa estar rodando em :8080)
 cd frontend && npm test       # testes do frontend (ainda não existe: vem com o Vitest, item 7)
 ```
@@ -78,7 +84,7 @@ cd frontend && npm test       # testes do frontend (ainda não existe: vem com o
 - Mensagens das exceções em frase normal, teste de URL sem host (`http:///x`, cobre a precedência do `HttpUrlValidator`; validado com o ciclo vermelho/verde) e teste de retry de colisão com sucesso; `./mvnw test`: 15 testes (PR #3)
 - Cache no Redis do `resolve` (PR #4): `ShortUrlCache` (`StringRedisTemplate`, chave `short-url:<code>` → URL), cache-aside, TTL = menor entre o tempo até `expiresAt` e 1 hora; falhas do Redis são logadas e ignoradas (fallback para o banco). `registerHit` passou a ser por `code` (acerto de cache não tem o `id`). `application.yaml` com `timeout`/`connect-timeout` de 200ms: sem isso, com o Redis caindo com a app já conectada, o Lettuce enfileira o comando por ~60s e o redirect trava. `./mvnw test`: 22 testes
 - Validado à mão com Redis real: chave criada com TTL ≈ 3600s e redirect funcionando com o Redis parado (app subindo sem Redis)
-- CI com GitHub Actions (PR #6): `.github/workflows/ci.yml` roda `./mvnw -B test` (Temurin 25, cache do Maven) em `push` e `pull_request` para o `main`; o `mvnw` foi marcado como executável no git (`git update-index --chmod=+x`). O `main` está protegido por ruleset: exige PR e o check `test` verde, com o branch atualizado; sem bypass, então até commits de docs passam por branch + PR
+- CI com GitHub Actions (PR #6): `.github/workflows/ci.yml` roda `./mvnw -B test` com `working-directory: backend` (Temurin 25, cache do Maven por `backend/pom.xml`) em `push` e `pull_request` para o `main`; o `mvnw` foi marcado como executável no git (`git update-index --chmod=+x`). O `main` está protegido por ruleset: exige PR e o check `test` verde, com o branch atualizado; sem bypass, então até commits de docs passam por branch + PR
 - Erros de validação (400): `GlobalExceptionHandler` trata `MethodArgumentNotValidException` e devolve `ProblemDetail` (`application/problem+json`) com `errors` (mapa campo → primeira mensagem), ex.: `{"detail":"Invalid request","status":400,"errors":{"url":"must be a valid http/https URL"}}`. Antes disso o 400 vinha com o corpo genérico do Spring Boot, sem dizer o campo. Documentado no Swagger e coberto no `ShortControllerTest` (`errors.url`, `errors.expiresInDays`)
 - Frontend (PRs #10 e #11): app Vite + React + TS em `frontend/`, Tailwind 4, shadcn inicializado, tema do neobrutalism.dev (`styling/blue.json`) com a paleta creme e a IBM Plex (`@fontsource`) já aplicadas no `index.css`; `utils.ts` com `cn()` própria (`clsx` + `tailwind-merge`) — o `init` do shadcn tinha instalado o pacote `cn` de terceiros, removido. `Button`, `Input`, `Card` e `Alert` em `components/ui/`; botões em caixa alta com a Condensed (`font-heading uppercase` no `buttonVariants`) e `Card` com fundo `--secondary-background`; regra `react-refresh/only-export-components` desligada para `src/components/ui/` no `eslint.config.js` (componentes copiados do shadcn exportam `*Variants`)
 - `types/urls.ts` (espelha os DTOs) e `services/urlService.ts`: `createShortUrl` faz `POST /api/urls` e lança `ApiError` (com `fieldErrors` lidos de `errors` do 400); falha de rede e status inesperados viram `ApiError` com mensagem genérica. `npm run build` passa; `CreateUrlRequest.expiresInDays` é opcional (o DTO do backend é `Integer` anulável). Validado contra o backend real pelo proxy do Vite (fluxo feliz)
