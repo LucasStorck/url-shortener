@@ -1,6 +1,6 @@
 export interface CreateUrlRequest {
   url: string
-  expiresInDays: number
+  expiresInDays?: number
 }
 
 export interface CreateUrlResponse {
