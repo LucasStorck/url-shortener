@@ -1,5 +1,7 @@
 package org.lucas.urlshortener.service;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.lucas.urlshortener.exception.ShortUrlCodeGenerationException;
@@ -9,6 +11,7 @@ import org.lucas.urlshortener.model.ShortUrl;
 import org.lucas.urlshortener.repository.ShortUrlRepository;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
@@ -34,6 +37,9 @@ public class ShortUrlServiceImplTest {
   @Mock
   ShortUrlCache cache;
 
+  @Spy
+  private MeterRegistry registry = new SimpleMeterRegistry();
+
   @Test
   public void create_savesEntityWithGeneratedCode() {
     when(repository.saveAndFlush(any(ShortUrl.class)))
@@ -43,6 +49,7 @@ public class ShortUrlServiceImplTest {
     assertThat(result.getCode()).hasSize(7);
     assertThat(result.getTargetUrl()).isEqualTo("https://example.com");
     assertThat(result.getExpiresAt()).isNull();
+    assertThat(registry.counter("urls.created").count()).isEqualTo(1.0);
   }
 
   @Test
@@ -76,6 +83,7 @@ public class ShortUrlServiceImplTest {
 
     assertThat(result).isNotNull();
     assertThat(result.getCode()).hasSize(7);
+    assertThat(registry.counter("urls.code.collisions").count()).isEqualTo(1.0);
     verify(repository, times(2)).saveAndFlush(any(ShortUrl.class));
   }
 
@@ -90,6 +98,7 @@ public class ShortUrlServiceImplTest {
     String target = service.resolve("abc1234");
 
     assertThat(target).isEqualTo("https://example.com");
+    assertThat(redirects("miss")).isEqualTo(1.0);
     verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("abc1234"), any(Instant.class));
   }
 
@@ -100,6 +109,7 @@ public class ShortUrlServiceImplTest {
     assertThatThrownBy(() -> service.resolve("nope"))
       .isInstanceOf(ShortUrlNotFoundException.class);
 
+    assertThat(redirects("not_found")).isEqualTo(1.0);
     verify(repository, never()).registerHit(any(), any());
   }
 
@@ -113,6 +123,7 @@ public class ShortUrlServiceImplTest {
     assertThatThrownBy(() -> service.resolve("old"))
       .isInstanceOf(ShortUrlExpiredException.class);
 
+    assertThat(redirects("expired")).isEqualTo(1.0);
     verify(repository, never()).registerHit(any(), any());
   }
 
@@ -123,6 +134,7 @@ public class ShortUrlServiceImplTest {
     String target = service.resolve("abc1234");
 
     assertThat(target).isEqualTo("https://example.com");
+    assertThat(redirects("hit")).isEqualTo(1.0);
     verify(repository, never()).findByCode(any());
     verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("abc1234"), any(Instant.class));
   }
@@ -151,4 +163,7 @@ public class ShortUrlServiceImplTest {
     verify(cache, never()).put(any(), any(), any());
   }
 
+  private double redirects(String result) {
+    return registry.counter("urls.redirects", "result", result).count();
+  }
 }
