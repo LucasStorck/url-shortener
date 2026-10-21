@@ -11,3 +11,11 @@ spring:
     redis:
       timeout: 200ms
       connect-timeout: 200ms
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  health:
+    redis:
+      enabled: false
