@@ -47,7 +47,8 @@ public class ShortControllerTest {
         .content("{\"url\":\"https://example.com\",\"expiresInDays\":0}"))
       .andExpect(status().isBadRequest())
       .andExpect(jsonPath("$.errors.expiresInDays").exists())
-      .andExpect(jsonPath("$.errors.url").doesNotExist());
+      .andExpect(jsonPath("$.errors.url").doesNotExist())
+      .andExpect(jsonPath("$.errors.expiresInDays").value("must be greater than 0"));
   }
 
   @Test
@@ -59,7 +60,7 @@ public class ShortControllerTest {
   }
 
   @Test
-  public void create_returns201WithLocation() throws Exception{
+  public void create_returns201WithLocation() throws Exception {
     ShortUrl created = new ShortUrl();
     created.setCode("abc1234");
     created.setTargetUrl("https://example.com");
@@ -103,5 +104,23 @@ public class ShortControllerTest {
     when(service.resolve("old")).thenThrow(new ShortUrlExpiredException("old"));
 
     mockMvc.perform(get("/old")).andExpect(status().isGone());
+  }
+
+  @Test
+  void create_returns400ProblemDetailForMalformedJson() throws Exception {
+    mockMvc.perform(post("/api/urls")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{not json"))
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.detail").value("Malformed JSON request"));
+  }
+
+  @Test
+  void create_rejectsTooLongUrl() throws Exception {
+    mockMvc.perform(post("/api/urls")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"url\":\"https://example.com/" + "x".repeat(2100) + "\"}"))
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.errors.url").value("must be at most 2048 characters"));
   }
 }
