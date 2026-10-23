@@ -51,6 +51,8 @@ public class ShortControllerTest {
       .andExpect(jsonPath("$.errors.expiresInDays").value("must be greater than 0"));
   }
 
+  // "http" is deliberate: it is the scheme that exercises the missing-host check in HttpUrlValidator.
+  @SuppressWarnings("HttpUrlsUsage")
   @Test
   void create_rejectsHttpUrlWithoutHost() throws Exception {
     mockMvc.perform(post("/api/urls")
