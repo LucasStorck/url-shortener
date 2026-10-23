@@ -94,9 +94,9 @@ cd frontend && npm test       # testes do frontend (ainda não existe: vem com o
 1. **Máquina do trabalho**: `./mvnw spring-boot:run` iniciado pelo Claude falha com `Unable to establish loopback connection` ao subir o Tomcat (JVM/Windows, provável VPN/antivírus/EDR); não é problema do código. Pelo IntelliJ a app sobe normalmente. Testes com `MockMvc` não abrem porta e funcionam
 2. O IntelliJ sugere trocar `http://` por `https://` em strings de teste; no teste `http:///x` isso desfaz a cobertura do bug de precedência do `HttpUrlValidator` (só o esquema `http` o exercita). Manter `http` (ideal: `@SuppressWarnings("HttpUrlsUsage")` + comentário)
 3. ~~Health do Redis~~ (resolvido no PR #15: o Redis foi excluído do `/actuator/health`; não verificado na prática com o Redis parado)
-4. O cache pode servir um link por até 1 hora depois de removido do banco; hoje não existe endpoint de remoção. Considerar invalidar a chave se ele for criado
-5. JSON malformado no `POST /api/urls` (`HttpMessageNotReadableException`) também dá 400, mas fora do `GlobalExceptionHandler`: volta o corpo genérico do Spring, sem `errors`. O frontend sempre envia JSON válido, então fica como melhoria
-6. Mensagens de `@Size` e `@Positive` saem no idioma da JVM/requisição (ex.: "deve ser maior que 0"), misturadas com as do `@ValidHttpUrl` em inglês. Correção planejada: `message` explícita no DTO (ex.: `@Size(max = 2048, message = "must be at most 2048 characters")`)
+4. O cache pode servir um link por até 1 hora depois de removido do banco; hoje não existe endpoint de remoção. Considerar invalidar a chave se ele for criado. Resolver junto do endpoint de remoção (item 9 dos próximos passos): `ShortUrlCache.evict(code)` chamado depois de apagar do banco; se o Redis estiver fora, a entrada expira pelo TTL
+5. ~~JSON malformado~~ (resolvido: `HttpMessageNotReadableException` tratada no `GlobalExceptionHandler`, devolve `ProblemDetail` com `detail: "Malformed JSON request"`, sem `errors` e sem vazar a mensagem do Jackson; o frontend mostra no `Alert`)
+6. ~~Mensagens de validação em idiomas misturados~~ (resolvido: `message` explícita em todas as constraints de `CreateUrlRequest`, em inglês, coberto no `ShortControllerTest`)
 
 ## Próximos passos
 1. ~~Observabilidade (versão simples)~~ (feito, PR #15)
