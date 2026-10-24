@@ -49,7 +49,7 @@ public class ShortUrlServiceImplTest {
     assertThat(result.getCode()).hasSize(7);
     assertThat(result.getTargetUrl()).isEqualTo("https://example.com");
     assertThat(result.getExpiresAt()).isNull();
-    assertThat(registry.counter("urls.created").count()).isEqualTo(1.0);
+    assertThat(registry.counter("urls.shortened").count()).isEqualTo(1.0);
   }
 
   @Test
