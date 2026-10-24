@@ -19,3 +19,7 @@ management:
   health:
     redis:
       enabled: false
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

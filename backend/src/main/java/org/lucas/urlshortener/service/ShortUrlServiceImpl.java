@@ -46,7 +46,7 @@ public class ShortUrlServiceImpl implements ShortUrlService {
       }
       try {
         ShortUrl saved = repository.saveAndFlush(entity);
-        registry.counter("urls.created").increment();
+        registry.counter("urls.shortened").increment();
         return saved;
       } catch (DataIntegrityViolationException e) {
         registry.counter("urls.code.collisions").increment();
