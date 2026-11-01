@@ -26,13 +26,14 @@ public class ShortUrlServiceImpl implements ShortUrlService {
 
   private final ShortUrlRepository repository;
   private final ShortUrlCache cache;
-
   private final MeterRegistry registry;
+  private final HitCounter hitCounter;
 
-  public ShortUrlServiceImpl(ShortUrlRepository repository, ShortUrlCache cache, MeterRegistry registry) {
+  public ShortUrlServiceImpl(ShortUrlRepository repository, ShortUrlCache cache, MeterRegistry registry, HitCounter hitCounter) {
     this.repository = repository;
     this.cache = cache;
     this.registry = registry;
+    this.hitCounter = hitCounter;
   }
 
   @Override
@@ -61,7 +62,7 @@ public class ShortUrlServiceImpl implements ShortUrlService {
     Optional<String> cached = cache.get(code);
     if (cached.isPresent()) {
       redirect("hit");
-      repository.registerHit(code, Instant.now());
+      countHit(code);
       return cached.get();
     }
 
@@ -78,9 +79,15 @@ public class ShortUrlServiceImpl implements ShortUrlService {
 
     redirect("miss");
     cache.put(code, entity.getTargetUrl(), entity.getExpiresAt());
-    repository.registerHit(code, Instant.now());
+    countHit(code);
     return entity.getTargetUrl();
+  }
 
+  private void countHit(String code) {
+    if (!hitCounter.record(code)) {
+      registry.counter("urls.hits.fallback").increment();
+      repository.registerHit(code, Instant.now());
+    }
   }
 
   private void redirect(String result) {
