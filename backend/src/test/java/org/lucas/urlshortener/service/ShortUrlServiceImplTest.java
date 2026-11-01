@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -36,6 +37,8 @@ public class ShortUrlServiceImplTest {
   ShortUrlServiceImpl service;
   @Mock
   ShortUrlCache cache;
+  @Mock
+  HitCounter hitCounter;
 
   @Spy
   private MeterRegistry registry = new SimpleMeterRegistry();
@@ -94,12 +97,13 @@ public class ShortUrlServiceImplTest {
     entity.setCode("abc1234");
     entity.setTargetUrl("https://example.com");
     when(repository.findByCode("abc1234")).thenReturn(Optional.of(entity));
-
+    when(hitCounter.record("abc1234")).thenReturn(true);
     String target = service.resolve("abc1234");
 
     assertThat(target).isEqualTo("https://example.com");
     assertThat(redirects("miss")).isEqualTo(1.0);
-    verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("abc1234"), any(Instant.class));
+    verify(hitCounter).record("abc1234");
+    verify(repository, never()).registerHit(any(), any());
   }
 
   @Test
@@ -110,6 +114,7 @@ public class ShortUrlServiceImplTest {
       .isInstanceOf(ShortUrlNotFoundException.class);
 
     assertThat(redirects("not_found")).isEqualTo(1.0);
+    verify(hitCounter, never()).record(any());
     verify(repository, never()).registerHit(any(), any());
   }
 
@@ -124,19 +129,22 @@ public class ShortUrlServiceImplTest {
       .isInstanceOf(ShortUrlExpiredException.class);
 
     assertThat(redirects("expired")).isEqualTo(1.0);
+    verify(hitCounter, never()).record(any());
     verify(repository, never()).registerHit(any(), any());
   }
 
   @Test
-  void resolve_cacheHit_skipsDatabaseButRegistersHit() {
+  void resolve_cacheHit_skipsDatabaseAndCountsInRedis() {
     when(cache.get("abc1234")).thenReturn(Optional.of("https://example.com"));
 
+    when(hitCounter.record("abc1234")).thenReturn(true);
     String target = service.resolve("abc1234");
 
     assertThat(target).isEqualTo("https://example.com");
     assertThat(redirects("hit")).isEqualTo(1.0);
     verify(repository, never()).findByCode(any());
-    verify(repository).registerHit(org.mockito.ArgumentMatchers.eq("abc1234"), any(Instant.class));
+    verify(hitCounter).record("abc1234");
+    verify(repository, never()).registerHit(any(), any());
   }
 
   @Test
@@ -145,10 +153,12 @@ public class ShortUrlServiceImplTest {
     entity.setCode("abc1234");
     entity.setTargetUrl("https://example.com");
     when(repository.findByCode("abc1234")).thenReturn(Optional.of(entity));
+    when(hitCounter.record("abc1234")).thenReturn(true);
 
     service.resolve("abc1234");
 
     verify(cache).put("abc1234", "https://example.com", null);
+    verify(hitCounter).record("abc1234");
   }
 
   @Test
@@ -163,7 +173,22 @@ public class ShortUrlServiceImplTest {
     verify(cache, never()).put(any(), any(), any());
   }
 
+  @Test
+  void resolve_fallsBackToSynchronousCountWhenRedisFails() {
+    ShortUrl entity = new ShortUrl();
+    entity.setCode("abc1234");
+    entity.setTargetUrl("https://example.com");
+    when(repository.findByCode("abc1234")).thenReturn(Optional.of(entity));
+    when(hitCounter.record("abc1234")).thenReturn(false);
+
+    service.resolve("abc1234");
+
+    verify(repository).registerHit(eq("abc1234"), any(Instant.class));
+    assertThat(registry.counter("urls.hits.fallback").count()).isEqualTo(1.0);
+  }
+
   private double redirects(String result) {
     return registry.counter("urls.redirects", "result", result).count();
   }
+
 }
