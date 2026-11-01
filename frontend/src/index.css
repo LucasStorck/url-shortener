@@ -118,7 +118,7 @@
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
     --secondary-background: #fbf7ea;
-    --main: #e8462b;
+    --main: #d43b21;
     --main-foreground: #ffffff;
     --overlay: oklch(0% 0 0 / 0.8);
     --shadow: 3px 3px 0px 0px var(--border);
